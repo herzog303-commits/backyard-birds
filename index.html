@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backyard Bird Log</title>
+<meta name="description" content="Birds identified from a rooftop microphone in the Pacific Northwest, with time of day and weather.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
+<style>
+:root {
+  --bg: #f3f5f4; --panel: #ffffff; --line: #d9dfdc; --fg: #17211e; --muted: #5b6a65; --grid: #e6ebe9;
+  --day: #2b7a65; --night: #4a55a2; --bad: #b3402f; --tipbg: #ffffff;
+  --serif: "Newsreader", Georgia, serif; --sans: "IBM Plex Sans", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #101617; --panel: #182022; --line: #2a3639; --fg: #e5ece9; --muted: #92a39d; --grid: #243033; --day: #6cc3a7; --night: #93a0ec; --bad: #e07b69; --tipbg: #1f292c; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #101617; --panel: #182022; --line: #2a3639; --fg: #e5ece9; --muted: #92a39d; --grid: #243033; --day: #6cc3a7; --night: #93a0ec; --bad: #e07b69; --tipbg: #1f292c; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--sans); }
+.bl { max-width: 72rem; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-left)) 40px max(16px, env(safe-area-inset-right)); display: flex; flex-direction: column; gap: 20px; position: relative; }
+h1 { font-family: var(--serif); font-weight: 400; font-size: 2.1rem; line-height: 1.15; margin: 0; letter-spacing: -.01em; }
+h2 { font-size: 1rem; font-weight: 500; margin: 0; }
+h3 { margin: 0; }
+p { margin: 0; }
+.lede { max-width: 46rem; line-height: 1.55; color: var(--muted); margin-top: .5rem; }
+.lede b, .lede .v { color: var(--fg); font-weight: 500; }
+.note { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; min-height: 4.5rem; }
+.kpi .n { font-family: var(--serif); font-size: 2rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.kpi .l { color: var(--muted); font-size: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card.wide { grid-column: 1 / -1; }
+.chart { min-height: 120px; position: relative; font-variant-numeric: tabular-nums; }
+.chart svg { display: block; }
+.chart svg text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
+.chart svg text.strong { fill: var(--fg); }
+.tip { position: absolute; z-index: 5; pointer-events: none; background: var(--tipbg); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.18); padding: 4px 10px; font-size: 12px; line-height: 1.4; white-space: nowrap; }
+.tip[hidden] { display: none; }
+.tip .h { color: var(--muted); }
+.fail { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 120px; color: var(--muted); font-size: 12px; }
+.fail i { width: .375rem; height: .375rem; border-radius: 50%; background: var(--bad); }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 12px; }
+.legend i { display: inline-block; width: .6rem; height: .6rem; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; }
+.wx { display: flex; flex-direction: column; gap: 8px; }
+.wx h3 { margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.wx .row { display: grid; grid-template-columns: minmax(7rem, 13rem) 1fr 6.5rem; gap: 8px; align-items: center; font-size: 12px; }
+.wx .bar { height: 14px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+.wx .bar > div { height: 100%; border-radius: 4px; background: var(--day); }
+.wx .val { text-align: right; color: var(--muted); }
+.wx .val b { color: var(--fg); font-weight: 500; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tabs button { font: inherit; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 4px 13px; cursor: pointer; }
+.tabs button[aria-pressed="true"] { color: var(--fg); border-color: var(--muted); background: var(--grid); }
+.tabs button:focus-visible, a:focus-visible { outline: 2px solid var(--day); outline-offset: 2px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 12px; }
+.sp { display: grid; grid-template-columns: 4.5rem 1fr; gap: 12px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+.sp img { width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 8px; background: var(--grid); }
+.sp h3 { font-size: 14px; font-weight: 500; }
+.sp .sci { font-style: italic; color: var(--muted); font-size: 12px; }
+.sp .st { margin-top: 5px; font-size: 12px; color: var(--muted); line-height: 1.5; font-variant-numeric: tabular-nums; }
+.sp .st b { color: var(--fg); font-weight: 500; }
+.sp .lk { margin-top: 5px; display: flex; gap: 16px; font-size: 12px; }
+.sp .lk a { color: var(--fg); text-underline-offset: 2px; }
+footer { color: var(--muted); font-size: 12px; line-height: 1.55; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+footer a { color: var(--fg); }
+@media (max-width: 520px) { .wx .row { grid-template-columns: 1fr 5rem; } .wx .row .bar { grid-column: 1 / -1; order: 3; } h1 { font-size: 1.75rem; } }
+@media (prefers-reduced-motion: no-preference) { .chart svg { animation: fade .3s ease-out; } @keyframes fade { from { opacity: 0; } to { opacity: 1; } } }
+</style>
+</head>
+<body>
+<div class="bl">
+  <header>
+    <h1>Backyard Bird Log</h1>
+    <p class="lede" id="lede">Loading…</p>
+    <p class="note" style="margin-top: .5rem">A call is one 3-second stretch of audio from a rooftop camera microphone that BirdNET scores at 50% confidence or higher, filtered to species plausible for the region and week. Rates divide calls by the clips recorded, so hours with more recording don't look busier.</p>
+  </header>
+
+  <section class="kpis" aria-label="Totals">
+    <div class="kpi"><span class="n" id="k-calls">—</span><span class="l">Confident calls</span></div>
+    <div class="kpi"><span class="n" id="k-species">—</span><span class="l">Species heard</span></div>
+    <div class="kpi"><span class="n" id="k-clips">—</span><span class="l">Clips scored</span></div>
+    <div class="kpi"><span class="n" id="k-days">—</span><span class="l">Calendar days covered</span></div>
+  </section>
+
+  <div class="grid">
+    <section class="card wide" id="time-of-day">
+      <h2>Calls by time of day</h2>
+      <p class="note">Average calls per five-minute clip, by hour of the day (Pacific).</p>
+      <div class="legend"><span><i style="background: var(--day)"></i>Daytime hours</span><span><i style="background: var(--night)"></i>Night hours, 7 pm to 7 am</span></div>
+      <div class="chart" id="c-hour"></div>
+    </section>
+
+    <section class="card wide" id="after-dark">
+      <h2>After dark</h2>
+      <p class="note">Species heard between 7 pm and 7 am, hour by hour, in calls per clip. Night calls are rare and a few will be mistakes; the species cards below show each bird's best confidence and link to recordings to compare against.</p>
+      <div class="chart" id="c-night"></div>
+    </section>
+
+    <section class="card" id="species">
+      <h2>Most heard species</h2>
+      <p class="note">Total confident calls, top 15.</p>
+      <div class="chart" id="c-species"></div>
+    </section>
+
+    <section class="card" id="by-day">
+      <h2>Day by day</h2>
+      <p class="note">Calls per clip each day. A day with fewer clips is a partial day.</p>
+      <div class="chart" id="c-day"></div>
+    </section>
+
+    <section class="card wide" id="who-when">
+      <h2>Who sings when</h2>
+      <p class="note">Calls per clip for each of the 12 most heard species by hour. Each row is shaded against its own busiest hour.</p>
+      <div class="chart" id="c-heat"></div>
+    </section>
+
+    <section class="card wide" id="weather">
+      <h2>Weather</h2>
+      <p class="note">Calls per clip under each hourly Sea-Tac observation. Weather and time of day overlap (fog is a morning thing), so read these as hints until more days are in.</p>
+      <div class="chart wx" id="c-wx"></div>
+    </section>
+
+    <section class="card wide" id="all-species">
+      <h2>Every species</h2>
+      <p class="note">Photos from Wikipedia. Hear opens recordings of the species on xeno-canto to compare with what the microphone caught. Confident calls are 50% or higher; possible calls are 25 to 50%.</p>
+      <div class="tabs" role="group" aria-label="Sort species">
+        <button type="button" data-sort="most" aria-pressed="true">Most heard</button>
+        <button type="button" data-sort="least" aria-pressed="false">Least heard</button>
+        <button type="button" data-sort="night" aria-pressed="false">After dark</button>
+      </div>
+      <div class="chart gallery" id="c-species-list"></div>
+    </section>
+  </div>
+
+  <footer>
+    <p>Identifications by <a href="https://github.com/kahst/BirdNET-Analyzer">BirdNET-Analyzer</a> running on audio from a roof-mounted camera. Weather is the hourly Sea-Tac observation nearest each clip. No audio or location is published here. <span id="updated"></span></p>
+    <p><a href="data/detections.json">Raw detections</a> · <a href="data/clips.json">Clips and weather</a> · <a href="https://github.com/herzog303-commits/backyard-birds">Source</a></p>
+  </footer>
+
+  <div class="tip" hidden></div>
+</div>
+
+<script>
+const root = document.querySelector('.bl');
+const tip = root.querySelector('.tip');
+const fmtN = d3.format(',');
+const fmtR = d3.format('.2f');
+const hr = (h) => (h % 12 || 12) + (h < 12 ? 'a' : 'p');
+const hrSpan = (h) => hr(h) + ' to ' + hr((h + 1) % 24);
+const dayFmt = d3.utcFormat('%b %-d');
+const NIGHT = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
+const isNight = (h) => h >= 19 || h <= 6;
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const DAY = 'var(--day)', NITE = 'var(--night)', MUTED = 'var(--line)';
+let sortMode = 'most', DATA = null;
+
+function showTip(ev, lines) {
+  tip.replaceChildren(...lines.map((t, i) => {
+    const d = document.createElement('div');
+    d.textContent = t;
+    if (i === 0) d.className = 'h';
+    return d;
+  }));
+  tip.hidden = false;
+  const r = root.getBoundingClientRect();
+  let x = ev.clientX - r.left + 14;
+  if (x + tip.offsetWidth > r.width) x = ev.clientX - r.left - tip.offsetWidth - 14;
+  tip.style.left = Math.max(0, x) + 'px';
+  tip.style.top = ev.clientY - r.top + 14 + 'px';
+}
+const hideTip = () => { tip.hidden = true; };
+
+function textWidth(svg, strs) {
+  const t = svg.append('text').attr('opacity', 0);
+  let w = 0;
+  strs.forEach((s) => { t.text(s); w = Math.max(w, t.node().getComputedTextLength()); });
+  t.remove();
+  return w;
+}
+function newSvg(el, h) {
+  const w = el.clientWidth || 600;
+  d3.select(el).selectAll('*').remove();
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('height', h).attr('viewBox', `0 0 ${w} ${h}`);
+  return { svg, w };
+}
+
+/* ---------- derived tables (all computed here from the published JSON) ---------- */
+function derive(dets, clips, species) {
+  const MIN = 0.5;
+  const calls = dets.filter((d) => d.conf >= MIN);
+  const bySpecies = d3.rollup(calls, (v) => v.length, (d) => d.species);
+  const top = [...bySpecies.entries()].sort((a, b) => b[1] - a[1]);
+  const dates = [...new Set(clips.map((c) => c.date))].sort();
+  const stats = { calls: calls.length, species: bySpecies.size, clips: clips.length, days: dates.length,
+    first: dates[0], last: dates[dates.length - 1], top_species: top[0]?.[0] || '', top_calls: top[0]?.[1] || 0 };
+
+  const clipsAt = (h) => clips.filter((c) => c.hour === h).length;
+  const byHour = d3.range(24).map((h) => {
+    const n = clipsAt(h), k = calls.filter((d) => d.hour === h).length;
+    return { hour: h, clips: n, calls: k, rate: n ? k / n : null };
+  });
+
+  const speciesRank = top.slice(0, 15).map(([sp, n]) => ({
+    species: sp, calls: n, clips_with: new Set(calls.filter((d) => d.species === sp).map((d) => d.clip)).size }));
+
+  const heatRows = (names, hours) => names.flatMap((s) => hours.map((h) => {
+    const n = clipsAt(h), k = calls.filter((d) => d.species === s && d.hour === h).length;
+    return { species: s, hour: h, calls: k, clips: n, rate: n ? k / n : 0 };
+  }));
+  const speciesHour = heatRows(top.slice(0, 12).map((e) => e[0]), d3.range(24));
+  const nightCalls = d3.rollup(calls.filter((d) => isNight(d.hour)), (v) => v.length, (d) => d.species);
+  const nightTop = [...nightCalls.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map((e) => e[0]);
+  const speciesNight = heatRows(nightTop, NIGHT);
+
+  const clipOf = new Map(clips.map((c) => [c.clip, c]));
+  const factors = [
+    ['Sky', 'VFR, ceiling above 3,000 ft', (c) => c.sky === 'VFR'],
+    ['Sky', 'MVFR, 1,000 to 3,000 ft', (c) => c.sky === 'MVFR'],
+    ['Sky', 'IFR, 500 to 1,000 ft', (c) => c.sky === 'IFR'],
+    ['Sky', 'LIFR, under 500 ft', (c) => c.sky === 'LIFR'],
+    ['Wind', 'Calm to 4 kt', (c) => c.wind !== null && c.wind < 5],
+    ['Wind', '5 to 9 kt', (c) => c.wind >= 5 && c.wind < 10],
+    ['Wind', '10 to 14 kt', (c) => c.wind >= 10 && c.wind < 15],
+    ['Wind', '15 kt or more', (c) => c.wind >= 15],
+    ['Present weather', 'None reported', (c) => c.wx === 0],
+    ['Present weather', 'Rain, mist or fog', (c) => c.wx === 1],
+  ];
+  const byWeather = factors.map(([factor, label, test]) => {
+    const n = clips.filter(test).length;
+    const k = calls.filter((d) => clipOf.get(d.clip) && test(clipOf.get(d.clip))).length;
+    return { factor, label, clips: n, calls: k, rate: n ? k / n : null };
+  }).filter((r) => r.clips > 0);
+
+  const byDay = dates.map((day) => {
+    const n = clips.filter((c) => c.date === day).length, k = calls.filter((d) => d.date === day).length;
+    return { date: day, clips: n, calls: k, rate: n ? k / n : 0 };
+  });
+
+  const sp = new Map();
+  dets.forEach((d) => {
+    const e = sp.get(d.species) || { species: d.species, calls: 0, possible: 0, night_calls: 0, peak_pct: 0, last: '' };
+    if (d.conf >= MIN) { e.calls++; if (isNight(d.hour)) e.night_calls++; } else e.possible++;
+    e.peak_pct = Math.max(e.peak_pct, Math.round(d.conf * 100));
+    if (d.time > e.last) e.last = d.time;
+    sp.set(d.species, e);
+  });
+  const speciesStats = [...sp.values()].map((e) => ({ ...e, last: e.last.slice(0, 10) + ' ' + e.last.slice(11, 16) }));
+  return { stats, byHour, speciesRank, speciesHour, speciesNight, byWeather, byDay, speciesStats, species };
+}
+
+/* ---------- charts ---------- */
+function grid(svg, y, m, w) {
+  y.ticks(4).forEach((v) => {
+    svg.append('line').attr('x1', m.l).attr('x2', w - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', 'var(--grid)');
+    svg.append('text').attr('x', m.l - 6).attr('y', y(v) + 4).attr('text-anchor', 'end').text(fmtR(v));
+  });
+}
+function drawHours(el, rows) {
+  const h = 230;
+  const { svg, w } = newSvg(el, h);
+  const m = { t: 8, r: 6, b: 22, l: 36 };
+  const x = d3.scaleBand(rows.map((r) => r.hour), [m.l, w - m.r]).padding(0.18);
+  const y = d3.scaleLinear([0, (d3.max(rows, (r) => r.rate) || 1) * 1.08], [h - m.b, m.t]).nice();
+  grid(svg, y, m, w);
+  rows.forEach((r) => {
+    if (r.rate !== null) svg.append('rect').attr('x', x(r.hour)).attr('width', x.bandwidth()).attr('y', y(r.rate)).attr('height', y(0) - y(r.rate)).attr('rx', 3).style('fill', isNight(r.hour) ? NITE : DAY);
+    if (r.hour % 3 === 0) svg.append('text').attr('x', x(r.hour) + x.bandwidth() / 2).attr('y', h - 6).attr('text-anchor', 'middle').text(hr(r.hour));
+  });
+  svg.selectAll('rect.hit').data(rows).join('rect').attr('class', 'hit').attr('x', (r) => x(r.hour) - 1).attr('width', x.bandwidth() + 2)
+    .attr('y', m.t).attr('height', h - m.t - m.b).attr('fill', 'transparent')
+    .on('mousemove', (ev, r) => showTip(ev, [hrSpan(r.hour), fmtR(r.rate || 0) + ' calls per clip', fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips']))
+    .on('mouseleave', hideTip);
+}
+function drawSpecies(el, rows) {
+  const rowH = 24, h = rows.length * rowH + 8;
+  const { svg, w } = newSvg(el, h);
+  const lw = textWidth(svg, rows.map((r) => r.species)) + 10;
+  const vw = textWidth(svg, rows.map((r) => fmtN(r.calls))) + 8;
+  const x = d3.scaleLinear([0, d3.max(rows, (r) => r.calls) || 1], [0, Math.max(10, w - lw - vw - 4)]);
+  rows.forEach((r, i) => {
+    const yy = i * rowH + 4;
+    svg.append('text').attr('class', 'strong').attr('x', lw - 8).attr('y', yy + 14).attr('text-anchor', 'end').text(r.species);
+    svg.append('rect').attr('x', lw).attr('y', yy + 3).attr('width', x(r.calls)).attr('height', 14).attr('rx', 4).style('fill', i === 0 ? DAY : MUTED);
+    svg.append('text').attr('x', lw + x(r.calls) + 6).attr('y', yy + 14).text(fmtN(r.calls));
+    svg.append('rect').attr('x', 0).attr('y', yy).attr('width', w).attr('height', rowH).attr('fill', 'transparent')
+      .on('mousemove', (ev) => showTip(ev, [r.species, fmtN(r.calls) + ' calls', 'in ' + fmtN(r.clips_with) + ' different clips']))
+      .on('mouseleave', hideTip);
+  });
+}
+function drawDays(el, rows) {
+  const h = 230;
+  const { svg, w } = newSvg(el, h);
+  const m = { t: 8, r: 6, b: 22, l: 36 };
+  const x = d3.scaleBand(rows.map((r) => r.date), [m.l, w - m.r]).padding(0.3);
+  const y = d3.scaleLinear([0, (d3.max(rows, (r) => r.rate) || 1) * 1.08], [h - m.b, m.t]).nice();
+  grid(svg, y, m, w);
+  const bw = Math.min(x.bandwidth(), 56);
+  const every = Math.ceil(rows.length / Math.max(1, Math.floor((w - m.l) / 52)));
+  rows.forEach((r, i) => {
+    const d = new Date(r.date);
+    svg.append('rect').attr('x', x(r.date)).attr('width', bw).attr('y', y(r.rate)).attr('height', y(0) - y(r.rate)).attr('rx', 4).style('fill', DAY);
+    if (i % every === 0) svg.append('text').attr('x', x(r.date) + bw / 2).attr('y', h - 6).attr('text-anchor', 'middle').text(dayFmt(d));
+    svg.append('rect').attr('x', x(r.date) - 2).attr('width', x.bandwidth() + 4).attr('y', m.t).attr('height', h - m.t - m.b).attr('fill', 'transparent')
+      .on('mousemove', (ev) => showTip(ev, [dayFmt(d), fmtR(r.rate) + ' calls per clip', fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips']))
+      .on('mouseleave', hideTip);
+  });
+}
+function drawHeat(el, rows, hours = d3.range(24)) {
+  const species = [...new Set(rows.map((r) => r.species))];
+  const cellH = 22, h = species.length * cellH + 26;
+  const { svg, w } = newSvg(el, h);
+  const lw = textWidth(svg, species) + 12;
+  const cw = Math.max(6, (w - lw) / hours.length);
+  species.forEach((s, i) => {
+    const mine = rows.filter((r) => r.species === s);
+    const peak = d3.max(mine, (r) => r.rate) || 1;
+    svg.append('text').attr('class', 'strong').attr('x', lw - 8).attr('y', i * cellH + 15).attr('text-anchor', 'end').text(s);
+    mine.forEach((r) => {
+      svg.append('rect').attr('x', lw + hours.indexOf(r.hour) * cw).attr('y', i * cellH).attr('width', cw - 1.5).attr('height', cellH - 2).attr('rx', 3)
+        .style('fill', r.rate ? (isNight(r.hour) ? NITE : DAY) : 'var(--grid)').attr('fill-opacity', r.rate ? 0.14 + 0.86 * (r.rate / peak) : 0.7)
+        .on('mousemove', (ev) => showTip(ev, [s + ', ' + hrSpan(r.hour), fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips', fmtR(r.rate) + ' per clip']))
+        .on('mouseleave', hideTip);
+    });
+  });
+  hours.forEach((hh, i) => { if (i % (hours.length > 12 ? 6 : 2) === 0) svg.append('text').attr('x', lw + i * cw).attr('y', h - 6).text(hr(hh)); });
+}
+function drawWeather(el, rows) {
+  const maxRate = d3.max(rows, (r) => r.rate) || 1;
+  const sel = d3.select(el);
+  sel.selectAll('*').remove();
+  ['Sky', 'Wind', 'Present weather'].forEach((f) => {
+    const list = rows.filter((r) => r.factor === f);
+    if (!list.length) return;
+    sel.append('h3').text(f);
+    const row = sel.selectAll(null).data(list).enter().append('div').attr('class', 'row')
+      .on('mousemove', (ev, r) => showTip(ev, [r.label, fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips']))
+      .on('mouseleave', hideTip);
+    row.append('span').text((r) => r.label);
+    row.append('div').attr('class', 'bar').append('div').style('width', (r) => (100 * r.rate / maxRate) + '%');
+    row.append('span').attr('class', 'val').each(function (r) {
+      const b = document.createElement('b'); b.textContent = fmtR(r.rate);
+      this.append(b, ' · ' + fmtN(r.clips) + ' clips');
+    });
+  });
+}
+const safeLink = (u, host) => typeof u === 'string' && u.startsWith('https://' + host + '/');
+function drawSpeciesList(el, stats, info) {
+  const byName = new Map(info.map((i) => [i.species, i]));
+  const sorters = {
+    most: (a, b) => b.calls - a.calls || b.peak_pct - a.peak_pct,
+    least: (a, b) => a.calls - b.calls || a.peak_pct - b.peak_pct,
+    night: (a, b) => b.night_calls - a.night_calls || b.calls - a.calls,
+  };
+  let list = [...stats].sort(sorters[sortMode]);
+  if (sortMode === 'night') list = list.filter((s) => s.night_calls > 0);
+  const sel = d3.select(el);
+  sel.selectAll('*').remove();
+  sel.selectAll('article').data(list, (s) => s.species).enter().append('article').attr('class', 'sp').each(function (s) {
+    const i = byName.get(s.species) || {};
+    const c = d3.select(this);
+    const img = c.append('img').attr('alt', s.species).attr('width', 72).attr('height', 72).attr('loading', 'lazy');
+    if (typeof i.img === 'string' && /^img\/[a-z0-9-]+\.jpg$/.test(i.img)) img.attr('src', i.img);
+    const body = c.append('div');
+    body.append('h3').text(s.species);
+    body.append('div').attr('class', 'sci').text(i.sci || '');
+    const st = body.append('div').attr('class', 'st');
+    const line = (parts) => { const d = st.append('div'); parts.forEach(([t, bold]) => (bold ? d.append('b') : d.append('span')).text(t)); };
+    line([[fmtN(s.calls), 1], [' confident calls, '], [fmtN(s.night_calls), 1], [' after dark']]);
+    line([[fmtN(s.possible), 1], [' possible']]);
+    line([['Best '], [fmtN(s.peak_pct), 1], ['%']]);
+    line([['Last heard '], [s.last, 1]]);
+    const lk = body.append('div').attr('class', 'lk');
+    if (safeLink(i.hear, 'xeno-canto.org')) lk.append('a').attr('href', i.hear).attr('target', '_blank').attr('rel', 'noopener').text('Hear');
+    if (safeLink(i.wiki, 'en.wikipedia.org')) lk.append('a').attr('href', i.wiki).attr('target', '_blank').attr('rel', 'noopener').text('Read');
+  });
+}
+
+function render() {
+  if (!DATA) return;
+  const D = DATA, s = D.stats;
+  document.getElementById('lede').replaceChildren(
+    ...[[fmtN(s.calls), 1], [' confident calls from '], [fmtN(s.species), 1], [' species across '], [fmtN(s.clips), 1],
+      [' five-minute clips, recorded '], [s.first, 2], [' to '], [s.last, 2], ['. Most heard: '], [s.top_species, 2],
+      [' (' + fmtN(s.top_calls) + ' calls).']].map(([t, k]) => {
+      const e = document.createElement(k === 1 ? 'b' : 'span'); if (k === 2) e.className = 'v'; e.textContent = t; return e; }));
+  document.getElementById('k-calls').textContent = fmtN(s.calls);
+  document.getElementById('k-species').textContent = fmtN(s.species);
+  document.getElementById('k-clips').textContent = fmtN(s.clips);
+  document.getElementById('k-days').textContent = fmtN(s.days);
+  drawHours(document.getElementById('c-hour'), D.byHour);
+  drawHeat(document.getElementById('c-night'), D.speciesNight, NIGHT);
+  drawSpecies(document.getElementById('c-species'), D.speciesRank);
+  drawDays(document.getElementById('c-day'), D.byDay);
+  drawHeat(document.getElementById('c-heat'), D.speciesHour);
+  drawWeather(document.getElementById('c-wx'), D.byWeather);
+  drawSpeciesList(document.getElementById('c-species-list'), D.speciesStats, D.species);
+}
+
+document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+  sortMode = b.dataset.sort;
+  document.querySelectorAll('.tabs button').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+  if (DATA) drawSpeciesList(document.getElementById('c-species-list'), DATA.speciesStats, DATA.species);
+}));
+let resizeT;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(render, 150); });
+
+const getJson = (u) => fetch(u, { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); });
+Promise.all([getJson('data/detections.json'), getJson('data/clips.json'), getJson('data/species.json'), getJson('data/meta.json')])
+  .then(([dets, clips, species, meta]) => {
+    const dd = dets.map((d) => ({ time: d.t, date: d.t.slice(0, 10), hour: +d.t.slice(11, 13), species: d.s, conf: d.c, clip: d.k }));
+    const cc = clips.map((c) => ({ clip: c.k, date: c.k.slice(0, 10), hour: +c.k.slice(11, 13), sky: c.sky, wind: c.wind, wx: c.wx }));
+    DATA = derive(dd, cc, species);
+    const u = new Date(meta.updated);
+    document.getElementById('updated').textContent = 'Updated ' + u.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '.';
+    render();
+  })
+  .catch(() => {
+    document.getElementById('lede').textContent = '';
+    document.querySelectorAll('.chart').forEach((el) => {
+      el.replaceChildren();
+      const d = document.createElement('div'); d.className = 'fail';
+      d.append(document.createElement('i'), 'Failed to load'); el.append(d);
+    });
+  });
+</script>
+</body>
+</html>
