@@ -68,6 +68,25 @@ p { margin: 0; }
 .sp .st b { color: var(--fg); font-weight: 500; }
 .sp .lk { margin-top: 5px; display: flex; gap: 16px; font-size: 12px; }
 .sp .lk a { color: var(--fg); text-underline-offset: 2px; }
+.today-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 12px; }
+.today-top .t { display: flex; flex-direction: column; gap: 2px; }
+.today-top .t .n { font-family: var(--serif); font-size: 1.7rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.today-top .t .l { color: var(--muted); font-size: 12px; }
+.today-top .delta.up { color: var(--day); } .today-top .delta.down { color: var(--night); }
+.today-cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .today-cols { grid-template-columns: 1fr; } }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px 2px 2px; font-size: 12px; }
+.chip img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; background: var(--grid); }
+.feed { max-height: 24rem; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.feed .it { display: grid; grid-template-columns: 3.4rem 28px 1fr auto; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--grid); font-size: 12px; }
+.feed .it:last-child { border-bottom: 0; }
+.feed .it img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; background: var(--grid); }
+.feed .it .tm { color: var(--muted); font-variant-numeric: tabular-nums; }
+.feed .it .nm { color: var(--fg); font-weight: 500; }
+.feed .it .nm span { color: var(--muted); font-weight: 400; }
+.feed .it .cf { color: var(--muted); font-variant-numeric: tabular-nums; }
+.feed .it.night .tm { color: var(--night); }
 footer { color: var(--muted); font-size: 12px; line-height: 1.55; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
 footer a { color: var(--fg); }
 @media (max-width: 520px) { .wx .row { grid-template-columns: 1fr 5rem; } .wx .row .bar { grid-column: 1 / -1; order: 3; } h1 { font-size: 1.75rem; } }
@@ -90,6 +109,30 @@ footer a { color: var(--fg); }
   </section>
 
   <div class="grid">
+    <section class="card wide" id="today">
+      <h2>Today</h2>
+      <p class="note" id="today-note">Loading…</p>
+      <div class="today-top" id="today-top"></div>
+      <div class="today-cols">
+        <div>
+          <h2 style="margin-bottom: 8px">Latest detections</h2>
+          <div class="feed" id="c-feed"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+          <div>
+            <h2 style="margin-bottom: 8px">New to the log today</h2>
+            <div class="chips" id="c-new"></div>
+          </div>
+          <div style="min-width: 0">
+            <h2>Today against yesterday</h2>
+            <p class="note" style="margin-bottom: 4px">Calls per clip by hour. Bars are today, dots are yesterday.</p>
+            <div class="legend"><span><i style="background: var(--day)"></i>Today</span><span><i style="background: var(--muted); border-radius: 50%"></i>Yesterday</span></div>
+            <div class="chart" id="c-today-hours"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="card wide" id="time-of-day">
       <h2>Calls by time of day</h2>
       <p class="note">Average calls per five-minute clip, by hour of the day (Pacific).</p>
@@ -252,7 +295,33 @@ function derive(dets, clips, species) {
     sp.set(d.species, e);
   });
   const speciesStats = [...sp.values()].map((e) => ({ ...e, last: e.last.slice(0, 10) + ' ' + e.last.slice(11, 16) }));
-  return { stats, byHour, speciesRank, speciesHour, speciesNight, byWeather, byDay, speciesStats, species };
+  // ---- today view ----
+  const lastClip = clips[clips.length - 1];
+  const today = dates[dates.length - 1], prevDay = dates[dates.length - 2];
+  const tod = (k) => k.slice(11);
+  const cutoff = lastClip ? tod(lastClip.clip) : '';
+  const isToday = (c) => c.date === today, isPrev = (c) => c.date === prevDay && tod(c.clip) <= cutoff;
+  const tClips = clips.filter(isToday).length, pClips = clips.filter(isPrev).length;
+  const tCalls = calls.filter((d) => d.date === today), pCalls = calls.filter((d) => d.date === prevDay && tod(d.clip) <= cutoff);
+  const firstDay = new Map();
+  [...calls].sort((a, b) => (a.time < b.time ? -1 : 1)).forEach((d) => { if (!firstDay.has(d.species)) firstDay.set(d.species, d.date); });
+  const newToday = dates.length > 1 ? [...firstDay.entries()].filter(([, dt]) => dt === today).map(([sp]) => sp) : [];
+  const groups = new Map();
+  [...calls].sort((a, b) => (a.time < b.time ? -1 : 1)).forEach((d) => {
+    const key = d.clip + '|' + d.species;
+    const g = groups.get(key) || { time: d.time, species: d.species, n: 0, best: 0 };
+    g.n++; g.best = Math.max(g.best, d.conf); groups.set(key, g);
+  });
+  const feed = [...groups.values()].sort((a, b) => (a.time < b.time ? 1 : -1)).slice(0, 40);
+  const todayHours = d3.range(24).map((h) => {
+    const tc = clips.filter((c) => isToday(c) && c.hour === h).length, pc = clips.filter((c) => c.date === prevDay && c.hour === h).length;
+    return { hour: h, today: tc ? tCalls.filter((d) => d.hour === h).length / tc : null,
+      yesterday: pc ? calls.filter((d) => d.date === prevDay && d.hour === h).length / pc : null, clips: tc };
+  });
+  const todayInfo = { date: today, hasPrev: !!prevDay, calls: tCalls.length, species: new Set(tCalls.map((d) => d.species)).size,
+    clips: tClips, rate: tClips ? tCalls.length / tClips : 0, prevRate: pClips ? pCalls.length / pClips : 0,
+    latest: lastClip ? lastClip.clip.slice(0, 10) + ' ' + lastClip.clip.slice(11, 16).replace('-', ':') : '', newToday, feed, todayHours };
+  return { today: todayInfo, stats, byHour, speciesRank, speciesHour, speciesNight, byWeather, byDay, speciesStats, species };
 }
 
 /* ---------- charts ---------- */
@@ -382,6 +451,58 @@ function drawSpeciesList(el, stats, info) {
   });
 }
 
+function drawToday(T, species) {
+  const byName = new Map(species.map((i) => [i.species, i]));
+  const imgOf = (name) => { const i = byName.get(name); return i && /^img\/[a-z0-9-]+\.jpg$/.test(i.img || '') ? i.img : ''; };
+  document.getElementById('today-note').textContent = T.date + ' (Pacific). Latest clip scored: ' + T.latest.slice(11) + '.';
+  const top = d3.select('#today-top');
+  top.selectAll('*').remove();
+  const tile = (n, l, cls) => { const t = top.append('div').attr('class', 't'); t.append('span').attr('class', 'n' + (cls ? ' delta ' + cls : '')).text(n); t.append('span').attr('class', 'l').text(l); };
+  tile(fmtN(T.calls), 'Confident calls so far');
+  tile(fmtN(T.species), 'Species heard');
+  tile(fmtR(T.rate), 'Calls per clip');
+  if (T.hasPrev && T.prevRate > 0) {
+    const pct = Math.round((T.rate / T.prevRate - 1) * 100);
+    tile((pct >= 0 ? '+' : '') + pct + '%', 'Against yesterday, same hours (' + fmtR(T.prevRate) + ' per clip)', pct >= 0 ? 'up' : 'down');
+  }
+  const feed = d3.select('#c-feed');
+  feed.selectAll('*').remove();
+  if (!T.feed.length) feed.append('div').attr('class', 'it').text('No confident detections yet.');
+  T.feed.forEach((g) => {
+    const day = g.time.slice(0, 10), hh = +g.time.slice(11, 13);
+    const row = feed.append('div').attr('class', 'it' + (isNight(hh) ? ' night' : ''));
+    row.append('span').attr('class', 'tm').text((day === T.date ? '' : dayFmt(new Date(day)) + ' ') + g.time.slice(11, 16));
+    const im = row.append('img').attr('alt', '').attr('width', 28).attr('height', 28).attr('loading', 'lazy');
+    if (imgOf(g.species)) im.attr('src', imgOf(g.species));
+    const nm = row.append('span').attr('class', 'nm').text(g.species);
+    if (g.n > 1) nm.append('span').text(' ×' + g.n);
+    row.append('span').attr('class', 'cf').text(Math.round(g.best * 100) + '%');
+  });
+  const chips = d3.select('#c-new');
+  chips.selectAll('*').remove();
+  if (!T.newToday.length) chips.append('span').attr('class', 'note').text(T.hasPrev ? 'Nothing new today.' : 'Needs a second day of data.');
+  T.newToday.forEach((sp) => {
+    const c = chips.append('span').attr('class', 'chip');
+    const im = c.append('img').attr('alt', '').attr('width', 22).attr('height', 22);
+    if (imgOf(sp)) im.attr('src', imgOf(sp));
+    c.append('span').text(sp);
+  });
+  const el = document.getElementById('c-today-hours');
+  const h = 150, { svg, w } = newSvg(el, h), m = { t: 6, r: 4, b: 20, l: 30 };
+  const rows = T.todayHours;
+  const x = d3.scaleBand(rows.map((r) => r.hour), [m.l, w - m.r]).padding(0.2);
+  const y = d3.scaleLinear([0, d3.max(rows, (r) => Math.max(r.today || 0, r.yesterday || 0)) * 1.1 || 1], [h - m.b, m.t]).nice();
+  grid(svg, y, m, w);
+  rows.forEach((r) => {
+    if (r.today !== null) svg.append('rect').attr('x', x(r.hour)).attr('width', x.bandwidth()).attr('y', y(r.today)).attr('height', y(0) - y(r.today)).attr('rx', 2).style('fill', DAY);
+    if (r.yesterday !== null) svg.append('circle').attr('cx', x(r.hour) + x.bandwidth() / 2).attr('cy', y(r.yesterday)).attr('r', 2.8).style('fill', 'var(--muted)');
+    if (r.hour % 6 === 0) svg.append('text').attr('x', x(r.hour)).attr('y', h - 5).text(hr(r.hour));
+    svg.append('rect').attr('x', x(r.hour) - 1).attr('width', x.bandwidth() + 2).attr('y', m.t).attr('height', h - m.t - m.b).attr('fill', 'transparent')
+      .on('mousemove', (ev) => showTip(ev, [hrSpan(r.hour), 'Today: ' + (r.today === null ? 'no clips yet' : fmtR(r.today) + ' per clip'), 'Yesterday: ' + (r.yesterday === null ? 'no clips' : fmtR(r.yesterday) + ' per clip')]))
+      .on('mouseleave', hideTip);
+  });
+}
+
 function render() {
   if (!DATA) return;
   const D = DATA, s = D.stats;
@@ -394,6 +515,7 @@ function render() {
   document.getElementById('k-species').textContent = fmtN(s.species);
   document.getElementById('k-clips').textContent = fmtN(s.clips);
   document.getElementById('k-days').textContent = fmtN(s.days);
+  drawToday(D.today, D.species);
   drawHours(document.getElementById('c-hour'), D.byHour);
   drawHeat(document.getElementById('c-night'), D.speciesNight, NIGHT);
   drawSpecies(document.getElementById('c-species'), D.speciesRank);
