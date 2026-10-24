@@ -68,6 +68,9 @@ p { margin: 0; }
 .tabs button { font: inherit; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 4px 13px; cursor: pointer; }
 .tabs button[aria-pressed="true"] { color: var(--fg); border-color: var(--muted); background: var(--grid); }
 .tabs button:focus-visible, a:focus-visible { outline: 2px solid var(--day); outline-offset: 2px; }
+.tier { display: inline-block; font-size: 11px; line-height: 1; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-top: 4px; }
+.tier.solid { color: var(--fg); border-color: var(--day); }
+.tier.unverified { border-style: dashed; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 12px; }
 .sp { display: grid; grid-template-columns: 4.5rem 1fr; gap: 12px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
 .sp img { width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 8px; background: var(--grid); }
@@ -193,11 +196,12 @@ footer a { color: var(--fg); }
 
     <section class="card wide" id="all-species">
       <h2>Every species</h2>
-      <p class="note">Photos from Wikipedia. Hear opens recordings of the species on xeno-canto to compare with what the microphone caught. Confident calls meet the minimum confidence set at the top; possible calls are everything else BirdNET scored down to 25%, including calls held back by a filter.</p>
+      <p class="note">Photos from Wikipedia. Hear opens recordings of the species on xeno-canto to compare with what the microphone caught. Confident calls meet the minimum confidence set at the top; possible calls are everything else BirdNET scored down to 25%, including calls held back by a filter. The badge ignores the sliders: Solid means 75% or higher on two or more days, Plausible means 50% or higher on two or more days, Unverified is everything else. Several days of agreement is evidence, not proof, since a recurring non-bird sound can repeat too.</p>
       <div class="tabs" role="group" aria-label="Sort species">
         <button type="button" data-sort="most" aria-pressed="true">Most heard</button>
         <button type="button" data-sort="least" aria-pressed="false">Least heard</button>
         <button type="button" data-sort="night" aria-pressed="false">After dark</button>
+        <button type="button" data-sort="check" aria-pressed="false">Needs a listen</button>
       </div>
       <div class="chart gallery" id="c-species-list"></div>
     </section>
@@ -328,6 +332,12 @@ function derive(dets, clips, species, MIN, opt) {
     e.peak_pct = Math.max(e.peak_pct, Math.round(d.conf * 100));
     if (d.time > e.last) e.last = d.time;
     sp.set(d.species, e);
+  });
+  const dayset = (th) => d3.rollup(dets.filter((d) => d.conf >= th), (v) => new Set(v.map((d) => d.date)).size, (d) => d.species);
+  const d75 = dayset(0.75), d50 = dayset(0.5);
+  sp.forEach((e) => {
+    e.days75 = d75.get(e.species) || 0; e.days50 = d50.get(e.species) || 0;
+    e.tier = e.days75 >= 2 ? 'solid' : e.days50 >= 2 ? 'plausible' : 'unverified';
   });
   const speciesStats = [...sp.values()].map((e) => ({ ...e, last: e.last.slice(0, 10) + ' ' + e.last.slice(11, 16) }));
   // ---- today view ----
@@ -461,9 +471,12 @@ function drawSpeciesList(el, stats, info) {
     most: (a, b) => b.calls - a.calls || b.peak_pct - a.peak_pct,
     least: (a, b) => a.calls - b.calls || a.peak_pct - b.peak_pct,
     night: (a, b) => b.night_calls - a.night_calls || b.calls - a.calls,
+    check: (a, b) => rank[a.tier] - rank[b.tier] || b.calls - a.calls,
   };
+  const rank = { unverified: 0, plausible: 1, solid: 2 };
   let list = [...stats].sort(sorters[sortMode]);
   if (sortMode === 'night') list = list.filter((s) => s.night_calls > 0);
+  if (sortMode === 'check') list = list.filter((s) => s.tier !== 'solid');
   const sel = d3.select(el);
   sel.selectAll('*').remove();
   sel.selectAll('article').data(list, (s) => s.species).enter().append('article').attr('class', 'sp').each(function (s) {
@@ -480,6 +493,9 @@ function drawSpeciesList(el, stats, info) {
     line([[fmtN(s.possible), 1], [' possible']]);
     line([['Best '], [fmtN(s.peak_pct), 1], ['%']]);
     line([['Last heard '], [s.last, 1]]);
+    const why = { solid: 'Heard at 75% or higher on ' + s.days75 + ' different days.', plausible: 'Heard at 50% or higher on ' + s.days50 + ' different days, never twice at 75%.',
+      unverified: 'Heard at 50% or higher on ' + s.days50 + ' day' + (s.days50 === 1 ? '' : 's') + ' only. Treat as a guess until you hear it.' }[s.tier];
+    body.append('span').attr('class', 'tier ' + s.tier).attr('title', why).text({ solid: 'Solid', plausible: 'Plausible', unverified: 'Unverified' }[s.tier]);
     const lk = body.append('div').attr('class', 'lk');
     if (safeLink(i.hear, 'xeno-canto.org')) lk.append('a').attr('href', i.hear).attr('target', '_blank').attr('rel', 'noopener').text('Hear');
     if (safeLink(i.wiki, 'en.wikipedia.org')) lk.append('a').attr('href', i.wiki).attr('target', '_blank').attr('rel', 'noopener').text('Read');
