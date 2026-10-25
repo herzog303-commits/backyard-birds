@@ -202,6 +202,7 @@ footer a { color: var(--fg); }
         <button type="button" data-sort="least" aria-pressed="false">Least heard</button>
         <button type="button" data-sort="night" aria-pressed="false">After dark</button>
         <button type="button" data-sort="check" aria-pressed="false">Needs a listen</button>
+        <button type="button" data-sort="held" aria-pressed="false" title="Species the filters hide completely, though at least one call cleared the confidence line">Held back</button>
       </div>
       <div class="chart gallery" id="c-species-list"></div>
     </section>
@@ -327,8 +328,8 @@ function derive(dets, clips, species, MIN, opt) {
 
   const sp = new Map();
   dets.forEach((d) => {
-    const e = sp.get(d.species) || { species: d.species, calls: 0, possible: 0, night_calls: 0, peak_pct: 0, last: '' };
-    if (ok(d)) { e.calls++; if (isNight(d.hour)) e.night_calls++; } else e.possible++;
+    const e = sp.get(d.species) || { species: d.species, calls: 0, possible: 0, held: 0, night_calls: 0, peak_pct: 0, last: '' };
+    if (ok(d)) { e.calls++; if (isNight(d.hour)) e.night_calls++; } else { e.possible++; if (d.conf >= MIN) e.held++; }
     e.peak_pct = Math.max(e.peak_pct, Math.round(d.conf * 100));
     if (d.time > e.last) e.last = d.time;
     sp.set(d.species, e);
@@ -472,11 +473,13 @@ function drawSpeciesList(el, stats, info) {
     least: (a, b) => a.calls - b.calls || a.peak_pct - b.peak_pct,
     night: (a, b) => b.night_calls - a.night_calls || b.calls - a.calls,
     check: (a, b) => rank[a.tier] - rank[b.tier] || b.calls - a.calls,
+    held: (a, b) => b.peak_pct - a.peak_pct || b.held - a.held,
   };
   const rank = { unverified: 0, plausible: 1, solid: 2 };
   let list = [...stats].sort(sorters[sortMode]);
   if (sortMode === 'night') list = list.filter((s) => s.night_calls > 0);
   if (sortMode === 'check') list = list.filter((s) => s.tier !== 'solid');
+  if (sortMode === 'held') list = list.filter((s) => s.held > 0 && s.calls === 0);
   const sel = d3.select(el);
   sel.selectAll('*').remove();
   sel.selectAll('article').data(list, (s) => s.species).enter().append('article').attr('class', 'sp').each(function (s) {
@@ -491,6 +494,7 @@ function drawSpeciesList(el, stats, info) {
     const line = (parts) => { const d = st.append('div'); parts.forEach(([t, bold]) => (bold ? d.append('b') : d.append('span')).text(t)); };
     line([[fmtN(s.calls), 1], [' confident calls, '], [fmtN(s.night_calls), 1], [' after dark']]);
     line([[fmtN(s.possible), 1], [' possible']]);
+    if (s.held > 0) line([[fmtN(s.held), 1], [' above the line but held back by the filters']]);
     line([['Best '], [fmtN(s.peak_pct), 1], ['%']]);
     line([['Last heard '], [s.last, 1]]);
     const why = { solid: 'Heard at 75% or higher on ' + s.days75 + ' different days.', plausible: 'Heard at 50% or higher on ' + s.days50 + ' different days, never twice at 75%.',
