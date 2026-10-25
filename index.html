@@ -118,10 +118,10 @@ footer a { color: var(--fg); }
     <input type="range" id="conf" min="25" max="95" step="5" value="50">
     <output id="conf-out" for="conf">50%</output>
     <label class="rep" for="win">Heard again within
-      <select id="win"><option value="off">no limit</option><option value="clip">the same clip</option><option value="hour">the same hour</option><option value="day">the same day</option></select></label>
+      <select id="win"><option value="off">no limit</option><option value="clip">the same clip</option><option value="hour">the same hour</option><option value="day" selected>the same day</option></select></label>
     <label class="rep" for="minn">Species needs
-      <input type="number" id="minn" min="1" max="50" value="1"> calls</label>
-    <label class="rep"><input type="checkbox" id="night"> Hold daytime birds heard 9 pm to 4:30 am</label>
+      <input type="number" id="minn" min="1" max="50" value="3"> calls</label>
+    <label class="rep"><input type="checkbox" id="night" checked> Hold daytime birds heard 9 pm to 4:30 am</label>
     <span class="note" id="conf-note"></span>
   </div>
 
@@ -227,7 +227,7 @@ const NIGHT = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
 const isNight = (h) => h >= 19 || h <= 6;
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const DAY = 'var(--day)', NITE = 'var(--night)', MUTED = 'var(--line)';
-let sortMode = 'most', DATA = null, RAW = null, minConf = 0.5, opts = { win: 'off', minN: 1, night: false };
+let sortMode = 'most', DATA = null, RAW = null, minConf = 0.5, opts = { win: 'day', minN: 3, night: true };
 
 function showTip(ev, lines) {
   tip.replaceChildren(...lines.map((t, i) => {
