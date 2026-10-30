@@ -353,6 +353,10 @@ function derive(dets, clips, species, MIN, opt) {
   const hourRate = new Map(byHour.map((r) => [r.hour, r.rate || 0]));
   const callsInClip = d3.rollup(calls, (v) => v.length, (d) => d.clip);
   const WX = [
+    ['Temperature', 'Chilly, under 45\u00b0F', 'chilly weather (under 45\u00b0F)', 'Air temperature under 45\u00b0F', (c) => c.temp != null && c.temp < 45],
+    ['Temperature', 'Cool, 45 to 49\u00b0F', 'cool weather (45 to 49\u00b0F)', 'Air temperature 45 to 49\u00b0F', (c) => c.temp != null && c.temp >= 45 && c.temp < 50],
+    ['Temperature', 'Mild, 50 to 54\u00b0F', 'mild weather (50 to 54\u00b0F)', 'Air temperature 50 to 54\u00b0F', (c) => c.temp != null && c.temp >= 50 && c.temp < 55],
+    ['Temperature', 'Warm, 55\u00b0F or more', 'warm weather (55\u00b0F or more)', 'Air temperature 55\u00b0F or more', (c) => c.temp != null && c.temp >= 55],
     ['Cloud', 'Clear or high cloud', 'clear or high cloud', 'Cloud ceiling above 3,000 ft', (c) => c.sky === 'VFR'],
     ['Cloud', 'Cloudy', 'cloudy skies', 'Cloud ceiling 1,000 to 3,000 ft', (c) => c.sky === 'MVFR'],
     ['Cloud', 'Low cloud', 'low cloud', 'Cloud ceiling 500 to 1,000 ft', (c) => c.sky === 'IFR'],
@@ -373,7 +377,8 @@ function derive(dets, clips, species, MIN, opt) {
   }).filter((r) => r.clips > 0);
   const noWeather = clips.filter((c) => c.sky == null && c.wind == null && c.wx == null).length;
   const lc = clips[clips.length - 1];
-  const nowParts = lc ? WX.filter(([, , , , test]) => test(lc)).map((w) => w[2]) : [];
+  const nowParts = lc ? WX.filter(([g, , , , test]) => g !== 'Temperature' && test(lc)).map((w) => w[2]) : [];
+  if (lc && lc.temp != null) nowParts.unshift(lc.temp + '\u00b0F');
 
   const byDay = dates.map((day) => {
     const n = clips.filter((c) => c.date === day).length, k = calls.filter((d) => d.date === day).length;
@@ -764,7 +769,7 @@ function load() {
   return Promise.all([getJson('data/detections.json'), getJson('data/clips.json'), getJson('data/species.json'), getJson('data/meta.json')])
   .then(([dets, clips, species, meta]) => {
     const dd = dets.map((d) => ({ time: d.t, date: d.t.slice(0, 10), hour: +d.t.slice(11, 13), species: d.s, conf: d.c, clip: d.k }));
-    const cc = clips.map((c) => ({ clip: c.k, date: c.k.slice(0, 10), hour: +c.k.slice(11, 13), sky: c.sky, wind: c.wind, wx: c.wx }));
+    const cc = clips.map((c) => ({ clip: c.k, date: c.k.slice(0, 10), hour: +c.k.slice(11, 13), sky: c.sky, wind: c.wind, wx: c.wx, temp: c.temp }));
     RAW = [dd, cc, species];
     DATA = derive(dd, cc, species, minConf, opts);
     const u = new Date(meta.updated);
