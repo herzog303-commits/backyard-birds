@@ -64,13 +64,6 @@ p { margin: 0; }
 .fail i { width: .375rem; height: .375rem; border-radius: 50%; background: var(--bad); }
 .legend { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 12px; }
 .legend i { display: inline-block; width: .6rem; height: .6rem; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; }
-.wx { display: flex; flex-direction: column; gap: 8px; }
-.wx h3 { margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.wx .row { display: grid; grid-template-columns: minmax(7rem, 13rem) 1fr 6.5rem; gap: 8px; align-items: center; font-size: 12px; }
-.wx .bar { height: 14px; background: var(--grid); border-radius: 4px; overflow: hidden; }
-.wx .bar > div { height: 100%; border-radius: 4px; background: var(--day); }
-.wx .val { text-align: right; color: var(--muted); }
-.wx .val b { color: var(--fg); font-weight: 500; }
 .conf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; position: sticky; top: 0; z-index: 5; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
 .conf label { font-weight: 500; }
 .conf input[type=range] { flex: 1 1 12rem; max-width: 24rem; accent-color: var(--day); }
@@ -137,7 +130,7 @@ p { margin: 0; }
 .feed .it.night .tm { color: var(--night); }
 footer { color: var(--muted); font-size: 12px; line-height: 1.55; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
 footer a { color: var(--fg); }
-@media (max-width: 520px) { .wx .row { grid-template-columns: 1fr 5rem; } .wx .row .bar { grid-column: 1 / -1; order: 3; } h1 { font-size: 1.75rem; } }
+@media (max-width: 520px) { h1 { font-size: 1.75rem; } }
 @media (prefers-reduced-motion: no-preference) { .chart svg { animation: fade .3s ease-out; } @keyframes fade { from { opacity: 0; } to { opacity: 1; } } }
 </style>
 </head>
@@ -238,9 +231,12 @@ footer a { color: var(--fg); }
     </section>
 
     <section class="card wide" id="weather">
-      <h2>Weather</h2>
-      <p class="note">Calls per clip under each hourly Sea-Tac observation. Weather and time of day overlap (fog is a morning thing), so read these as hints until more days are in.</p>
-      <div class="chart wx" id="c-wx"></div>
+      <h2>Does the weather change how much birds call?</h2>
+      <p class="note">Each bar compares a kind of weather with a typical day at the same hour, so the morning chorus isn't mistaken for a weather effect. A handful of days is only a few weather systems, so read these as hints. Weather comes hourly from the Sea-Tac airport station.</p>
+      <p id="weather-now"></p>
+      <p id="weather-sum"></p>
+      <div class="legend"><span><i style="background: var(--fg); opacity: .8"></i>Clear difference</span><span><i style="background: var(--muted); opacity: .4"></i>Close to usual</span><span><i style="border: 1px dashed var(--muted)"></i>Too little data</span></div>
+      <div class="chart" id="c-wx"></div>
     </section>
 
     <section class="card wide" id="all-species">
@@ -352,24 +348,32 @@ function derive(dets, clips, species, MIN, opt) {
   const nightTop = [...nightCalls.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map((e) => e[0]);
   const speciesNight = heatRows(nightTop, NIGHT);
 
-  const clipOf = new Map(clips.map((c) => [c.clip, c]));
-  const factors = [
-    ['Sky', 'VFR, ceiling above 3,000 ft', (c) => c.sky === 'VFR'],
-    ['Sky', 'MVFR, 1,000 to 3,000 ft', (c) => c.sky === 'MVFR'],
-    ['Sky', 'IFR, 500 to 1,000 ft', (c) => c.sky === 'IFR'],
-    ['Sky', 'LIFR, under 500 ft', (c) => c.sky === 'LIFR'],
-    ['Wind', 'Calm to 4 kt', (c) => c.wind !== null && c.wind < 5],
-    ['Wind', '5 to 9 kt', (c) => c.wind >= 5 && c.wind < 10],
-    ['Wind', '10 to 14 kt', (c) => c.wind >= 10 && c.wind < 15],
-    ['Wind', '15 kt or more', (c) => c.wind >= 15],
-    ['Present weather', 'None reported', (c) => c.wx === 0],
-    ['Present weather', 'Rain, mist or fog', (c) => c.wx === 1],
+  // Weather, in plain words. Each row is compared with what the same hours of day usually bring,
+  // so mornings (busy) and fog (a morning thing) are not mistaken for cause and effect.
+  const hourRate = new Map(byHour.map((r) => [r.hour, r.rate || 0]));
+  const callsInClip = d3.rollup(calls, (v) => v.length, (d) => d.clip);
+  const WX = [
+    ['Cloud', 'Clear or high cloud', 'clear or high cloud', 'Cloud ceiling above 3,000 ft', (c) => c.sky === 'VFR'],
+    ['Cloud', 'Cloudy', 'cloudy skies', 'Cloud ceiling 1,000 to 3,000 ft', (c) => c.sky === 'MVFR'],
+    ['Cloud', 'Low cloud', 'low cloud', 'Cloud ceiling 500 to 1,000 ft', (c) => c.sky === 'IFR'],
+    ['Cloud', 'Fog or very low cloud', 'fog or very low cloud', 'Cloud ceiling under 500 ft', (c) => c.sky === 'LIFR'],
+    ['Wind', 'Calm, under 6 mph', 'calm air', 'Wind under 5 knots', (c) => c.wind != null && c.wind < 5],
+    ['Wind', 'Light, 6 to 10 mph', 'a light breeze (6 to 10 mph)', 'Wind 5 to 9 knots', (c) => c.wind != null && c.wind >= 5 && c.wind < 10],
+    ['Wind', 'Breezy, 12 to 16 mph', 'breezy air (12 to 16 mph)', 'Wind 10 to 14 knots', (c) => c.wind != null && c.wind >= 10 && c.wind < 15],
+    ['Wind', 'Windy, 17 mph or more', 'windy air (17 mph or more)', 'Wind 15 knots or more', (c) => c.wind != null && c.wind >= 15],
+    ['Rain', 'Dry', 'dry weather', 'No rain, mist or fog reported', (c) => c.wx === 0],
+    ['Rain', 'Rain, mist or fog', 'rain, mist or fog', 'Rain, mist or fog reported', (c) => c.wx === 1],
   ];
-  const byWeather = factors.map(([factor, label, test]) => {
-    const n = clips.filter(test).length;
-    const k = calls.filter((d) => clipOf.get(d.clip) && test(clipOf.get(d.clip))).length;
-    return { factor, label, clips: n, calls: k, rate: n ? k / n : null };
+  const byWeather = WX.map(([group, label, short, tip, test]) => {
+    const cs = clips.filter(test);
+    const calls_ = d3.sum(cs, (c) => callsInClip.get(c.clip) || 0), expected = d3.sum(cs, (c) => hourRate.get(c.hour) || 0);
+    const days = new Set(cs.map((c) => c.date)).size;
+    const diff = expected > 0 ? calls_ / expected - 1 : null;
+    return { group, label, short, tip, clips: cs.length, days, calls: calls_, expected, diff, enough: cs.length >= 30 && days >= 3 && diff !== null };
   }).filter((r) => r.clips > 0);
+  const noWeather = clips.filter((c) => c.sky == null && c.wind == null && c.wx == null).length;
+  const lc = clips[clips.length - 1];
+  const nowParts = lc ? WX.filter(([, , , , test]) => test(lc)).map((w) => w[2]) : [];
 
   const byDay = dates.map((day) => {
     const n = clips.filter((c) => c.date === day).length, k = calls.filter((d) => d.date === day).length;
@@ -427,7 +431,7 @@ function derive(dets, clips, species, MIN, opt) {
   const todayInfo = { date: today, hasPrev: !!prevDay, calls: tCalls.length, species: new Set(tCalls.map((d) => d.species)).size,
     clips: tClips, rate: tClips ? tCalls.length / tClips : 0, prevRate: pClips ? pCalls.length / pClips : 0,
     latest: lastClip ? lastClip.clip.slice(0, 10) + ' ' + lastClip.clip.slice(11, 16).replace('-', ':') : '', newToday, feed, todayHours };
-  return { today: todayInfo, kpi, worth, stats, byHour, speciesRank, speciesHour, speciesNight, byWeather, byDay, speciesStats, species };
+  return { today: todayInfo, kpi, worth, stats, byHour, noWeather, nowParts, speciesRank, speciesHour, speciesNight, byWeather, byDay, speciesStats, species };
 }
 
 /* ---------- charts ---------- */
@@ -509,23 +513,40 @@ function drawHeat(el, rows, hours = d3.range(24)) {
   hours.forEach((hh, i) => { if (i % (hours.length > 12 ? 6 : 2) === 0) svg.append('text').attr('x', lw + i * cw).attr('y', h - 6).text(hr(hh)); });
 }
 function drawWeather(el, rows) {
-  const maxRate = d3.max(rows, (r) => r.rate) || 1;
-  const sel = d3.select(el);
-  sel.selectAll('*').remove();
-  ['Sky', 'Wind', 'Present weather'].forEach((f) => {
-    const list = rows.filter((r) => r.factor === f);
-    if (!list.length) return;
-    sel.append('h3').text(f);
-    const row = sel.selectAll(null).data(list).enter().append('div').attr('class', 'row')
-      .on('mousemove', (ev, r) => showTip(ev, [r.label, fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips']))
-      .on('mouseleave', hideTip);
-    row.append('span').text((r) => r.label);
-    row.append('div').attr('class', 'bar').append('div').style('width', (r) => (100 * r.rate / maxRate) + '%');
-    row.append('span').attr('class', 'val').each(function (r) {
-      const b = document.createElement('b'); b.textContent = fmtR(r.rate);
-      this.append(b, ' · ' + fmtN(r.clips) + ' clips');
+  const rowH = 38, headH = 24, axisH = 22;
+  const groups = [...new Set(rows.map((r) => r.group))];
+  const h = groups.length * headH + rows.length * rowH + axisH + 6;
+  const { svg, w } = newSvg(el, h);
+  const lw = Math.min(textWidth(svg, rows.map((r) => r.label)) + 12, w * 0.5);
+  const x0 = lw + 8, x1 = w - 52, mid = (x0 + x1) / 2, span = 0.6;
+  const x = d3.scaleLinear([-span, span], [x0, x1]).clamp(true);
+  let y = 0;
+  groups.forEach((g) => {
+    svg.append('text').attr('x', 0).attr('y', y + 15).style('font-weight', 500).text(g);
+    y += headH;
+    rows.filter((r) => r.group === g).forEach((r) => {
+      const strong = r.enough && Math.abs(r.diff) >= 0.15;
+      svg.append('text').attr('class', 'strong').attr('x', lw).attr('y', y + 15).attr('text-anchor', 'end').text(r.label);
+      svg.append('text').attr('x', lw).attr('y', y + 29).attr('text-anchor', 'end').text(fmtN(r.clips) + ' clips, ' + r.days + (r.days === 1 ? ' day' : ' days'));
+      if (r.diff !== null) {
+        const bx = Math.min(x(0), x(r.diff)), bw = Math.max(2, Math.abs(x(r.diff) - x(0)));
+        const bar = svg.append('rect').attr('x', bx).attr('y', y + 8).attr('width', bw).attr('height', 18).attr('rx', 3);
+        if (!r.enough) bar.style('fill', 'none').style('stroke', 'var(--muted)').attr('stroke-dasharray', '3 2');
+        else bar.style('fill', strong ? 'var(--fg)' : 'var(--muted)').attr('fill-opacity', strong ? 0.8 : 0.4);
+        svg.append('text').attr('class', r.enough ? 'strong' : '').attr('x', x1 + 8).attr('y', y + 21).text((r.diff >= 0 ? '+' : '\u2212') + Math.round(Math.abs(r.diff) * 100) + '%');
+      }
+      svg.append('rect').attr('x', 0).attr('y', y).attr('width', w).attr('height', rowH).attr('fill', 'transparent')
+        .on('mousemove', (ev) => showTip(ev, [r.label + ' (' + r.tip.toLowerCase() + ')',
+          fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips on ' + r.days + (r.days === 1 ? ' day' : ' days'),
+          'About ' + fmtN(Math.round(r.expected)) + ' would be usual for those hours' + (r.enough ? '' : '. Too little data to trust yet')]))
+        .on('mouseleave', hideTip);
+      y += rowH;
     });
   });
+  svg.append('line').attr('x1', mid).attr('x2', mid).attr('y1', headH - 4).attr('y2', y).attr('stroke', 'var(--muted)');
+  svg.append('text').attr('x', x0).attr('y', h - 4).text('\u2190 quieter');
+  svg.append('text').attr('x', mid).attr('y', h - 4).attr('text-anchor', 'middle').text('usual');
+  svg.append('text').attr('x', x1).attr('y', h - 4).attr('text-anchor', 'end').text('busier \u2192');
 }
 const safeLink = (u, host) => typeof u === 'string' && u.startsWith('https://' + host + '/');
 function drawSpeciesList(el, stats, info) {
@@ -683,6 +704,16 @@ function render() {
   drawDays(document.getElementById('c-day'), D.byDay);
   drawHeat(document.getElementById('c-heat'), D.speciesHour);
   drawWeather(document.getElementById('c-wx'), D.byWeather);
+  const notable = D.byWeather.filter((r) => r.enough && Math.abs(r.diff) >= 0.15).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 3);
+  const pct = (r) => (r.diff >= 0 ? '+' : '\u2212') + Math.round(Math.abs(r.diff) * 100) + '%';
+  const sumEl = document.getElementById('weather-sum');
+  sumEl.textContent = (notable.length
+    ? 'Biggest differences so far: ' + notable.map((r) => r.short + ' ' + pct(r)).join(', ') + '.'
+    : D.byWeather.some((r) => r.enough) ? 'No clear weather effect yet: everything with enough data is within 15% of usual.' : 'Not enough days of weather yet to say anything.')
+    + (D.noWeather ? ' ' + fmtN(D.noWeather) + ' clips have no weather reading and are left out.' : '');
+  const nowEl = document.getElementById('weather-now');
+  nowEl.textContent = D.nowParts.length ? 'At the latest clip: ' + D.nowParts.join(', ') + '.' : '';
+  nowEl.hidden = !D.nowParts.length;
   drawSpeciesList(document.getElementById('c-species-list'), D.speciesStats, D.species);
   const live = D.byHour.filter((r) => r.rate !== null), busy = d3.greatest(live, (r) => r.rate), quiet = d3.least(live, (r) => r.rate);
   aria('c-hour', 'Calls per clip by hour of the day, in Pacific time.' + (busy ? ' Busiest hour ' + hrSpan(busy.hour) + ' at ' + fmtR(busy.rate) + '; quietest ' + hrSpan(quiet.hour) + ' at ' + fmtR(quiet.rate) + '.' : ''));
