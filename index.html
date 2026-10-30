@@ -44,6 +44,7 @@ p { margin: 0; }
 .tip { position: absolute; z-index: 5; pointer-events: none; background: var(--tipbg); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.18); padding: 4px 10px; font-size: 12px; line-height: 1.4; white-space: nowrap; }
 .tip[hidden] { display: none; }
 .tip .h { color: var(--muted); }
+.fresh { margin-top: 4px; } .fresh.stale { color: var(--bad); }
 .err { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--bad); border-radius: 8px; padding: 10px 14px; color: var(--fg); }
 .err[hidden] { display: none; }
 .err button { font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; cursor: pointer; }
@@ -73,6 +74,7 @@ p { margin: 0; }
 .conf .rep select, .conf .rep input[type=number] { font: inherit; font-size: 12px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
 .conf .rep input[type=number] { width: 4.2rem; }
 .conf .note { flex: 1 1 100%; }
+.conf .live { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
 .conf-more { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 #conf-toggle { display: none; font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; cursor: pointer; }
 #conf-toggle[aria-expanded="true"] { background: var(--grid); border-color: var(--muted); }
@@ -86,6 +88,7 @@ p { margin: 0; }
 @media (max-width: 640px) {
   #conf-toggle { display: inline-block; }
   .conf { padding: 8px 12px; }
+  .conf .live { flex: 1 1 100%; margin-left: 0; }
   .conf-more { display: none; flex: 1 1 100%; flex-direction: column; align-items: flex-start; }
   .conf.open .conf-more { display: flex; }
   .conf:not(.open) .note { display: none; }
@@ -120,7 +123,7 @@ p { margin: 0; }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px 2px 2px; font-size: 12px; }
 .chip img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; background: var(--grid); }
 .feed { max-height: 24rem; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
-.feed .it { display: grid; grid-template-columns: 3.4rem 28px 1fr auto; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--grid); font-size: 12px; }
+.feed .it { display: grid; grid-template-columns: 4.6rem 28px 1fr auto; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--grid); font-size: 12px; }
 .feed .it:last-child { border-bottom: 0; }
 .feed .it img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; background: var(--grid); }
 .feed .it .tm { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -138,9 +141,10 @@ footer a { color: var(--fg); }
 <div class="bl">
   <header>
     <h1>Backyard Bird Log</h1>
+    <p class="note fresh" id="fresh"></p>
     <p class="lede" id="lede">Loading…</p>
     <details class="how"><summary>How calls are counted</summary>
-      <p class="note">A call is one 3-second stretch of audio from a rooftop camera microphone that BirdNET scores at or above the confidence you pick below (50% to start), with optional filters that hold back one-off, rare or out-of-hours calls, filtered to species plausible for the region and week. Rates divide calls by the clips recorded, so hours with more recording don't look busier.</p>
+      <p class="note">A call is one 3-second stretch of audio from a rooftop camera microphone that BirdNET scores at or above the confidence you pick below (50% to start), with optional filters that hold back one-off, rare or out-of-hours calls, filtered to species plausible for the region and week. Rates are calls per hour of recording, so hours with more recording don't look busier.</p>
     </details>
   </header>
 
@@ -151,6 +155,7 @@ footer a { color: var(--fg); }
     <input type="range" id="conf" min="25" max="95" step="5" value="50">
     <output id="conf-out" for="conf">50%</output>
     <button type="button" id="conf-toggle" aria-expanded="false" aria-controls="conf-more">Filters</button>
+    <span class="live" id="conf-live" aria-live="polite"></span>
     <div class="conf-more" id="conf-more">
     <label class="rep" for="win">Heard again within
       <select id="win"><option value="off">no limit</option><option value="clip">the same clip</option><option value="hour">the same hour</option><option value="day" selected>the same day</option></select></label>
@@ -178,7 +183,7 @@ footer a { color: var(--fg); }
           </div>
           <div style="min-width: 0">
             <h2>Today against yesterday</h2>
-            <p class="note" style="margin-bottom: 4px">Calls per clip by hour. Bars are today, dots are yesterday.</p>
+            <p class="note" style="margin-bottom: 4px">Calls per hour of listening by hour. Bars are today, dots are yesterday.</p>
             <div class="legend"><span><i style="background: var(--day)"></i>Today</span><span><i style="background: var(--muted); border-radius: 50%"></i>Yesterday</span></div>
             <div class="chart" id="c-today-hours"></div>
           </div>
@@ -201,14 +206,14 @@ footer a { color: var(--fg); }
 
     <section class="card wide" id="time-of-day">
       <h2>Calls by time of day</h2>
-      <p class="note">Average calls per five-minute clip, by hour of the day (Pacific).</p>
+      <p class="note">Average calls per hour of listening, by hour of the day (Pacific).</p>
       <div class="legend"><span><i style="background: var(--day)"></i>Daytime hours</span><span><i style="background: var(--night)"></i>Night hours, 7 pm to 7 am</span></div>
       <div class="chart" id="c-hour"></div>
     </section>
 
     <section class="card wide" id="after-dark">
       <h2>After dark</h2>
-      <p class="note">Species heard between 7 pm and 7 am, hour by hour, in calls per clip. Night calls are rare and a few will be mistakes; the species cards below show each bird's best confidence and link to recordings to compare against.</p>
+      <p class="note">Species heard between 7 pm and 7 am, hour by hour, in calls per hour of listening. Night calls are rare and a few will be mistakes; the species cards below show each bird's best confidence and link to recordings to compare against.</p>
       <div class="chart" id="c-night"></div>
     </section>
 
@@ -220,13 +225,13 @@ footer a { color: var(--fg); }
 
     <section class="card" id="by-day">
       <h2>Day by day</h2>
-      <p class="note">Calls per clip each day. Dashed bars are partial days.</p>
+      <p class="note">Calls per hour of listening each day. Dashed bars are partial days.</p>
       <div class="chart" id="c-day"></div>
     </section>
 
     <section class="card wide" id="who-when">
       <h2>Who sings when</h2>
-      <p class="note">Calls per clip for each of the 12 most heard species by hour. Each row is shaded against its own busiest hour.</p>
+      <p class="note">Calls per hour of listening for each of the 12 most heard species by hour. Each row is shaded against its own busiest hour.</p>
       <div class="chart" id="c-heat"></div>
     </section>
 
@@ -255,7 +260,7 @@ footer a { color: var(--fg); }
   </div>
 
   <footer>
-    <p>Identifications by <a href="https://github.com/kahst/BirdNET-Analyzer">BirdNET-Analyzer</a> running on audio from a roof-mounted camera. Weather is the hourly Sea-Tac observation nearest each clip. No audio or location is published here. <span id="updated"></span></p>
+    <p>Identifications by <a href="https://github.com/kahst/BirdNET-Analyzer">BirdNET-Analyzer</a> running on audio from a roof-mounted camera. Weather is the hourly Sea-Tac observation nearest each clip. No audio or location is published here.</p>
     <p><a href="data/detections.json">Raw detections</a> · <a href="data/clips.json">Clips and weather</a> · <a href="https://github.com/herzog303-commits/backyard-birds">Source</a></p>
   </footer>
 
@@ -266,8 +271,17 @@ footer a { color: var(--fg); }
 const root = document.querySelector('.bl');
 const tip = root.querySelector('.tip');
 const fmtN = d3.format(',');
-const fmtR = d3.format('.2f');
+const HR = 12; // clips are 5 minutes, so rates are stored as calls per hour of listening
+const fmtR = (v) => (v === 0 ? '0' : v >= 10 ? d3.format(',.0f')(v) : d3.format('.1f')(v));
 const hr = (h) => (h % 12 || 12) + (h < 12 ? 'a' : 'p');
+const clock = (hh, mm) => ((hh % 12) || 12) + ':' + String(mm).padStart(2, '0') + (hh < 12 ? ' am' : ' pm');
+const ymd = d3.utcFormat('%Y-%m-%d'), dayLong = d3.utcFormat('%A, %b %-d');
+const whenStr = (iso, today) => {
+  const day = iso.slice(0, 10), t = clock(+iso.slice(11, 13), +iso.slice(14, 16));
+  if (day === today) return 'Today, ' + t;
+  if (day === ymd(d3.utcDay.offset(new Date(today), -1))) return 'Yesterday, ' + t;
+  return dayFmt(new Date(day)) + ', ' + t;
+};
 const hrSpan = (h) => hr(h) + ' to ' + hr((h + 1) % 24);
 const dayFmt = d3.utcFormat('%b %-d');
 const NIGHT = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
@@ -275,6 +289,22 @@ const isNight = (h) => h >= 19 || h <= 6;
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const DAY = 'var(--day)', NITE = 'var(--night)', MUTED = 'var(--line)';
 let showAll = false, sortMode = 'most', DATA = null, RAW = null, minConf = 0.5, opts = { win: 'day', minN: 3, night: true };
+(function restoreSettings() {
+  // ?c=65&w=hour&n=5&h=0 restores the filters; anything invalid is ignored
+  const q = new URLSearchParams(location.search), c = +q.get('c'), n = +q.get('n');
+  if (q.has('c') && Number.isInteger(c) && c >= 25 && c <= 95 && c % 5 === 0) { minConf = c / 100; document.getElementById('conf').value = c; document.getElementById('conf-out').textContent = c + '%'; }
+  if (['off', 'clip', 'hour', 'day'].includes(q.get('w'))) { opts.win = q.get('w'); document.getElementById('win').value = opts.win; }
+  if (q.has('n') && Number.isInteger(n) && n >= 1 && n <= 50) { opts.minN = n; document.getElementById('minn').value = n; }
+  if (q.get('h') === '0' || q.get('h') === '1') { opts.night = q.get('h') === '1'; document.getElementById('night').checked = opts.night; }
+})();
+function saveSettings() {
+  const p = new URLSearchParams();
+  if (Math.round(minConf * 100) !== 50) p.set('c', Math.round(minConf * 100));
+  if (opts.win !== 'day') p.set('w', opts.win);
+  if (opts.minN !== 3) p.set('n', opts.minN);
+  if (!opts.night) p.set('h', '0');
+  try { history.replaceState(null, '', location.pathname + (p.toString() ? '?' + p : '')); } catch (e) { /* sandboxed preview: skip */ }
+}
 
 function showTip(ev, lines) {
   tip.replaceChildren(...lines.map((t, i) => {
@@ -333,7 +363,7 @@ function derive(dets, clips, species, MIN, opt) {
   const clipsAt = (h) => clips.filter((c) => c.hour === h).length;
   const byHour = d3.range(24).map((h) => {
     const n = clipsAt(h), k = calls.filter((d) => d.hour === h).length;
-    return { hour: h, clips: n, calls: k, rate: n ? k / n : null };
+    return { hour: h, clips: n, calls: k, rate: n ? HR * k / n : null };
   });
 
   const speciesRank = top.slice(0, 15).map(([sp, n]) => ({
@@ -341,7 +371,7 @@ function derive(dets, clips, species, MIN, opt) {
 
   const heatRows = (names, hours) => names.flatMap((s) => hours.map((h) => {
     const n = clipsAt(h), k = calls.filter((d) => d.species === s && d.hour === h).length;
-    return { species: s, hour: h, calls: k, clips: n, rate: n ? k / n : null };
+    return { species: s, hour: h, calls: k, clips: n, rate: n ? HR * k / n : null };
   }));
   const speciesHour = heatRows(top.slice(0, 12).map((e) => e[0]), d3.range(24));
   const nightCalls = d3.rollup(calls.filter((d) => isNight(d.hour)), (v) => v.length, (d) => d.species);
@@ -350,7 +380,7 @@ function derive(dets, clips, species, MIN, opt) {
 
   // Weather, in plain words. Each row is compared with what the same hours of day usually bring,
   // so mornings (busy) and fog (a morning thing) are not mistaken for cause and effect.
-  const hourRate = new Map(byHour.map((r) => [r.hour, r.rate || 0]));
+  const hourRate = new Map(byHour.map((r) => [r.hour, (r.rate || 0) / HR]));
   const callsInClip = d3.rollup(calls, (v) => v.length, (d) => d.clip);
   const WX = [
     ['Temperature', 'Chilly, under 45\u00b0F', 'chilly weather (under 45\u00b0F)', 'Air temperature under 45\u00b0F', (c) => c.temp != null && c.temp < 45],
@@ -382,7 +412,7 @@ function derive(dets, clips, species, MIN, opt) {
 
   const byDay = dates.map((day) => {
     const n = clips.filter((c) => c.date === day).length, k = calls.filter((d) => d.date === day).length;
-    return { date: day, clips: n, calls: k, rate: n ? k / n : 0 };
+    return { date: day, clips: n, calls: k, rate: n ? HR * k / n : 0 };
   });
 
   const fullDay = d3.max(byDay, (r) => r.clips) || 0;
@@ -425,16 +455,16 @@ function derive(dets, clips, species, MIN, opt) {
   const feed = [...groups.values()].sort((a, b) => (a.time < b.time ? 1 : -1)).slice(0, 40);
   const todayHours = d3.range(24).map((h) => {
     const tc = clips.filter((c) => isToday(c) && c.hour === h).length, pc = clips.filter((c) => c.date === prevDay && c.hour === h).length;
-    return { hour: h, today: tc ? tCalls.filter((d) => d.hour === h).length / tc : null,
-      yesterday: pc ? calls.filter((d) => d.date === prevDay && d.hour === h).length / pc : null, clips: tc };
+    return { hour: h, today: tc ? HR * tCalls.filter((d) => d.hour === h).length / tc : null,
+      yesterday: pc ? HR * calls.filter((d) => d.date === prevDay && d.hour === h).length / pc : null, clips: tc };
   });
-  const rateOf = (ds) => { const set = new Set(ds); const n = clips.filter((c) => set.has(c.date)).length; return n ? calls.filter((d) => set.has(d.date)).length / n : null; };
+  const rateOf = (ds) => { const set = new Set(ds); const n = clips.filter((c) => set.has(c.date)).length; return n ? HR * calls.filter((d) => set.has(d.date)).length / n : null; };
   const recentDates = dates.slice(-3), priorDates = dates.slice(0, -3);
-  const kpi = { rate: clips.length ? calls.length / clips.length : 0,
+  const kpi = { rate: clips.length ? HR * calls.length / clips.length : 0,
     newRecent: dates.length > 3 ? [...firstDay.values()].filter((dt) => dt >= recentDates[0]).length : null,
     trend: priorDates.length >= 3 ? { recent: rateOf(recentDates), prior: rateOf(priorDates) } : null };
   const todayInfo = { date: today, hasPrev: !!prevDay, calls: tCalls.length, species: new Set(tCalls.map((d) => d.species)).size,
-    clips: tClips, rate: tClips ? tCalls.length / tClips : 0, prevRate: pClips ? pCalls.length / pClips : 0,
+    clips: tClips, rate: tClips ? HR * tCalls.length / tClips : 0, prevRate: pClips ? HR * pCalls.length / pClips : 0,
     latest: lastClip ? lastClip.clip.slice(0, 10) + ' ' + lastClip.clip.slice(11, 16).replace('-', ':') : '', newToday, feed, todayHours };
   return { today: todayInfo, kpi, worth, stats, byHour, noWeather, nowParts, speciesRank, speciesHour, speciesNight, byWeather, byDay, speciesStats, species };
 }
@@ -459,7 +489,7 @@ function drawHours(el, rows) {
   });
   svg.selectAll('rect.hit').data(rows).join('rect').attr('class', 'hit').attr('x', (r) => x(r.hour) - 1).attr('width', x.bandwidth() + 2)
     .attr('y', m.t).attr('height', h - m.t - m.b).attr('fill', 'transparent')
-    .on('mousemove', (ev, r) => showTip(ev, [hrSpan(r.hour), fmtR(r.rate || 0) + ' calls per clip', fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips']))
+    .on('mousemove', (ev, r) => showTip(ev, [hrSpan(r.hour), fmtR(r.rate || 0) + ' calls per hour of listening', fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips']))
     .on('mouseleave', hideTip);
 }
 function drawSpecies(el, rows) {
@@ -493,7 +523,7 @@ function drawDays(el, rows) {
     if (r.partial) bar.attr('fill-opacity', 0.18).style('stroke', DAY).attr('stroke-width', 1.5).attr('stroke-dasharray', '4 3');
     if (i % every === 0) svg.append('text').attr('x', x(r.date) + bw / 2).attr('y', h - 6).attr('text-anchor', 'middle').text(dayFmt(d));
     svg.append('rect').attr('x', x(r.date) - 2).attr('width', x.bandwidth() + 4).attr('y', m.t).attr('height', h - m.t - m.b).attr('fill', 'transparent')
-      .on('mousemove', (ev) => showTip(ev, [dayFmt(d) + (r.partial ? ' (partial day)' : ''), fmtR(r.rate) + ' calls per clip', fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips' + (r.partial ? ' of ' + fmtN(r.full) : '')]))
+      .on('mousemove', (ev) => showTip(ev, [dayFmt(d) + (r.partial ? ' (partial day)' : ''), fmtR(r.rate) + ' calls per hour of listening', fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips' + (r.partial ? ' of ' + fmtN(r.full) : '')]))
       .on('mouseleave', hideTip);
   });
 }
@@ -511,7 +541,7 @@ function drawHeat(el, rows, hours = d3.range(24)) {
       const cell = svg.append('rect').attr('x', lw + hours.indexOf(r.hour) * cw).attr('y', i * cellH).attr('width', cw - 1.5).attr('height', cellH - 2).attr('rx', 3)
         .style('fill', r.rate ? (isNight(r.hour) ? NITE : DAY) : 'var(--grid)').attr('fill-opacity', r.rate ? 0.14 + 0.86 * (r.rate / peak) : 0.7);
       if (r.rate === null) cell.style('fill', 'none').style('stroke', 'var(--muted)').attr('stroke-dasharray', '3 2').attr('fill-opacity', 1);
-      cell.on('mousemove', (ev) => showTip(ev, r.rate === null ? [s + ', ' + hrSpan(r.hour), 'No recording in this hour'] : [s + ', ' + hrSpan(r.hour), fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips', fmtR(r.rate) + ' per clip']))
+      cell.on('mousemove', (ev) => showTip(ev, r.rate === null ? [s + ', ' + hrSpan(r.hour), 'No recording in this hour'] : [s + ', ' + hrSpan(r.hour), fmtN(r.calls) + ' calls in ' + fmtN(r.clips) + ' clips', fmtR(r.rate) + ' per hour']))
         .on('mouseleave', hideTip);
     });
   });
@@ -591,7 +621,7 @@ function drawSpeciesList(el, stats, info) {
     line([[fmtN(s.possible), 1], [' possible, below the line']]);
     if (s.held > 0) line([[fmtN(s.held), 1], [' above the line but held back by the filters']]);
     line([['Best '], [fmtN(s.peak_pct), 1], ['%']]);
-    line([['Last heard '], [s.last, 1]]);
+    line([['Last heard '], [whenStr(s.last, DATA.today.date), 1]]);
     const why = { solid: 'Heard at 75% or higher on ' + s.days75 + ' different days.', plausible: 'Heard at 50% or higher on ' + s.days50 + ' different days, never twice at 75%.',
       unverified: 'Heard at 50% or higher on ' + s.days50 + ' day' + (s.days50 === 1 ? '' : 's') + ' only. Treat as a guess until you hear it.' }[s.tier];
     body.append('span').attr('class', 'tier ' + s.tier).attr('title', why).text({ solid: 'Solid', plausible: 'Plausible', unverified: 'Unverified' }[s.tier]);
@@ -623,16 +653,16 @@ const aria = (id, text) => { const sv = document.querySelector('#' + id + ' svg'
 function drawToday(T, species) {
   const byName = new Map(species.map((i) => [i.species, i]));
   const imgOf = (name) => { const i = byName.get(name); return i && /^img\/[a-z0-9-]+\.jpg$/.test(i.img || '') ? i.img : ''; };
-  document.getElementById('today-note').textContent = T.date + ' (Pacific). Latest clip scored: ' + T.latest.slice(11) + '.';
+  document.getElementById('today-note').textContent = dayLong(new Date(T.date)) + ' (Pacific time). Latest clip scored ' + clock(+T.latest.slice(11, 13), +T.latest.slice(14, 16)) + '.';
   const top = d3.select('#today-top');
   top.selectAll('*').remove();
   const tile = (n, l, cls) => { const t = top.append('div').attr('class', 't'); t.append('span').attr('class', 'n' + (cls ? ' delta ' + cls : '')).text(n); t.append('span').attr('class', 'l').text(l); };
   tile(fmtN(T.calls), 'Confident calls so far');
   tile(fmtN(T.species), 'Species heard');
-  tile(fmtR(T.rate), 'Calls per clip');
+  tile(fmtR(T.rate), 'Calls per hour of listening');
   if (T.hasPrev && T.prevRate > 0) {
     const pct = Math.round((T.rate / T.prevRate - 1) * 100);
-    tile((pct >= 0 ? '+' : '') + pct + '%', 'Against yesterday, same hours (' + fmtR(T.prevRate) + ' per clip)', pct >= 0 ? 'up' : 'down');
+    tile((pct >= 0 ? '+' : '') + pct + '%', 'Against yesterday, same hours (' + fmtR(T.prevRate) + ' per hour)', pct >= 0 ? 'up' : 'down');
   }
   const feed = d3.select('#c-feed');
   feed.selectAll('*').remove();
@@ -640,7 +670,7 @@ function drawToday(T, species) {
   T.feed.forEach((g) => {
     const day = g.time.slice(0, 10), hh = +g.time.slice(11, 13);
     const row = feed.append('div').attr('class', 'it' + (isNight(hh) ? ' night' : ''));
-    row.append('span').attr('class', 'tm').text((day === T.date ? '' : dayFmt(new Date(day)) + ' ') + g.time.slice(11, 16));
+    row.append('span').attr('class', 'tm').text((day === T.date ? '' : dayFmt(new Date(day)) + ', ') + clock(hh, +g.time.slice(14, 16)));
     const im = row.append('img').attr('alt', '').attr('width', 28).attr('height', 28).attr('loading', 'lazy');
     if (imgOf(g.species)) im.attr('src', imgOf(g.species));
     const nm = row.append('span').attr('class', 'nm').text(g.species);
@@ -667,7 +697,7 @@ function drawToday(T, species) {
     if (r.yesterday !== null) svg.append('circle').attr('cx', x(r.hour) + x.bandwidth() / 2).attr('cy', y(r.yesterday)).attr('r', 2.8).style('fill', 'var(--muted)');
     if (r.hour % 6 === 0) svg.append('text').attr('x', x(r.hour)).attr('y', h - 5).text(hr(r.hour));
     svg.append('rect').attr('x', x(r.hour) - 1).attr('width', x.bandwidth() + 2).attr('y', m.t).attr('height', h - m.t - m.b).attr('fill', 'transparent')
-      .on('mousemove', (ev) => showTip(ev, [hrSpan(r.hour), 'Today: ' + (r.today === null ? 'no clips yet' : fmtR(r.today) + ' per clip'), 'Yesterday: ' + (r.yesterday === null ? 'no clips' : fmtR(r.yesterday) + ' per clip')]))
+      .on('mousemove', (ev) => showTip(ev, [hrSpan(r.hour), 'Today: ' + (r.today === null ? 'no clips yet' : fmtR(r.today) + ' per hour'), 'Yesterday: ' + (r.yesterday === null ? 'no clips' : fmtR(r.yesterday) + ' per hour')]))
       .on('mouseleave', hideTip);
   });
 }
@@ -677,13 +707,13 @@ function render() {
   const D = DATA, s = D.stats;
   document.getElementById('lede').replaceChildren(
     ...[[fmtN(s.calls), 1], [' confident calls from '], [fmtN(s.species), 1], [' species across '], [fmtN(s.clips), 1],
-      [' five-minute clips, recorded '], [s.first, 2], [' to '], [s.last, 2], ['. Most heard: '], [s.top_species, 2],
+      [' five-minute clips, recorded '], [dayFmt(new Date(s.first)), 2], [' to '], [dayFmt(new Date(s.last)), 2], ['. Most heard: '], [s.top_species, 2],
       [' (' + fmtN(s.top_calls) + ' calls).']].map(([t, k]) => {
       const e = document.createElement(k === 1 ? 'b' : 'span'); if (k === 2) e.className = 'v'; e.textContent = t; return e; }));
   document.getElementById('k-calls').textContent = fmtN(s.calls);
   document.getElementById('k-species').textContent = fmtN(s.species);
   document.getElementById('k-clips').textContent = fmtN(s.clips);
-  document.getElementById('k-calls-d').textContent = fmtR(D.kpi.rate) + ' per clip';
+  document.getElementById('k-calls-d').textContent = fmtR(D.kpi.rate) + ' per hour';
   document.getElementById('k-clips-d').textContent = 'over ' + pl(s.days, 'day');
   const ns = D.kpi.newRecent;
   document.getElementById('k-species-d').textContent = ns === null ? '' : (ns ? '+' + fmtN(ns) + ' new in the last 3 days' : 'none new in the last 3 days');
@@ -692,7 +722,7 @@ function render() {
   if (!tile.hidden) {
     const pct = Math.round((tr.recent / tr.prior - 1) * 100), t = document.getElementById('k-trend'), td = document.getElementById('k-trend-d');
     t.textContent = (pct >= 0 ? '+' : '') + pct + '%';
-    td.textContent = fmtR(tr.recent) + ' against ' + fmtR(tr.prior) + ' calls per clip';
+    td.textContent = fmtR(tr.recent) + ' against ' + fmtR(tr.prior) + ' calls per hour of listening';
     td.className = 'd ' + (pct >= 0 ? 'up' : 'down');
   }
   const hi = minConf >= 0.75;
@@ -700,6 +730,7 @@ function render() {
     ? 'Strict: fewer false alarms, but quiet or distant birds drop out.'
     : minConf < 0.5 ? 'Loose: more birds, including more misidentifications. BirdNET scores of 25 to 50% are often wrong.'
     : 'Balanced. Slide right for surer calls, left to see everything BirdNET suspected.';
+  document.getElementById('conf-live').textContent = fmtN(s.calls) + ' calls \u00b7 ' + fmtN(s.species) + ' species' + (s.held ? ' \u00b7 ' + fmtN(s.held) + ' held back' : '');
   if (s.held) document.getElementById('conf-note').textContent += ' ' + fmtN(s.held) + ' calls above the line are held back by the filters.';
   drawToday(D.today, D.species);
   drawWorth(document.getElementById('c-worth'), D.worth, D.species);
@@ -721,15 +752,15 @@ function render() {
   nowEl.hidden = !D.nowParts.length;
   drawSpeciesList(document.getElementById('c-species-list'), D.speciesStats, D.species);
   const live = D.byHour.filter((r) => r.rate !== null), busy = d3.greatest(live, (r) => r.rate), quiet = d3.least(live, (r) => r.rate);
-  aria('c-hour', 'Calls per clip by hour of the day, in Pacific time.' + (busy ? ' Busiest hour ' + hrSpan(busy.hour) + ' at ' + fmtR(busy.rate) + '; quietest ' + hrSpan(quiet.hour) + ' at ' + fmtR(quiet.rate) + '.' : ''));
+  aria('c-hour', 'Calls per hour of listening by hour of the day, in Pacific time.' + (busy ? ' Busiest hour ' + hrSpan(busy.hour) + ' at ' + fmtR(busy.rate) + '; quietest ' + hrSpan(quiet.hour) + ' at ' + fmtR(quiet.rate) + '.' : ''));
   aria('c-species', 'Most heard species: ' + D.speciesRank.slice(0, 5).map((r) => r.species + ' ' + fmtN(r.calls)).join(', ') + '.');
   const bd = d3.greatest(D.byDay, (r) => r.rate);
-  aria('c-day', 'Calls per clip for each of ' + D.byDay.length + ' days, ' + dayFmt(new Date(D.byDay[0].date)) + ' to ' + dayFmt(new Date(D.byDay[D.byDay.length - 1].date)) + '.' + (bd ? ' Highest day ' + dayFmt(new Date(bd.date)) + ' at ' + fmtR(bd.rate) + '.' : '') + ' Partial days are dashed.');
+  aria('c-day', 'Calls per hour of listening for each of ' + D.byDay.length + ' days, ' + dayFmt(new Date(D.byDay[0].date)) + ' to ' + dayFmt(new Date(D.byDay[D.byDay.length - 1].date)) + '.' + (bd ? ' Highest day ' + dayFmt(new Date(bd.date)) + ' at ' + fmtR(bd.rate) + '.' : '') + ' Partial days are dashed.');
   const peakOf = (rows) => [...new Set(rows.map((r) => r.species))].map((sp) => { const m = d3.greatest(rows.filter((r) => r.species === sp && r.rate !== null), (r) => r.rate); return m ? sp + ' ' + hr(m.hour) : sp; }).join(', ');
-  aria('c-heat', 'Calls per clip by hour for the most heard species. Busiest hour for each: ' + peakOf(D.speciesHour) + '.');
-  aria('c-night', 'Calls per clip by hour between 7 pm and 7 am. Busiest hour for each species: ' + peakOf(D.speciesNight) + '.');
+  aria('c-heat', 'Calls per hour of listening by hour for the most heard species. Busiest hour for each: ' + peakOf(D.speciesHour) + '.');
+  aria('c-night', 'Calls per hour of listening by hour between 7 pm and 7 am. Busiest hour for each species: ' + peakOf(D.speciesNight) + '.');
   const th = d3.greatest(D.today.todayHours.filter((r) => r.today !== null), (r) => r.today);
-  aria('c-today-hours', 'Calls per clip by hour, today against yesterday.' + (th ? ' Today peaks at ' + hrSpan(th.hour) + ' with ' + fmtR(th.today) + '.' : ''));
+  aria('c-today-hours', 'Calls per hour of listening by hour, today against yesterday.' + (th ? ' Today peaks at ' + hrSpan(th.hour) + ' with ' + fmtR(th.today) + '.' : ''));
 }
 
 document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
@@ -758,12 +789,24 @@ document.getElementById('night').addEventListener('change', (e) => { opts.night 
 function redo() {
   if (!RAW) return;
   DATA = derive(RAW[0], RAW[1], RAW[2], minConf, opts);
+  saveSettings();
   render();
 }
 let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(render, 150); });
 
 const getJson = (u) => fetch(u, { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); });
+let UPDATED = null;
+function paintFresh() {
+  const el = document.getElementById('fresh');
+  if (!UPDATED || isNaN(UPDATED)) { el.textContent = ''; return; }
+  const m = Math.max(0, Math.round((Date.now() - UPDATED) / 60000));
+  const ago = m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + (Math.round(m / 60) === 1 ? ' hour ago' : ' hours ago') : UPDATED.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const stale = m > 150;
+  el.textContent = 'Updated ' + ago + (stale ? '. The data may be behind.' : '.');
+  el.classList.toggle('stale', stale);
+}
+setInterval(paintFresh, 60000);
 function load() {
   document.getElementById('err').hidden = true;
   return Promise.all([getJson('data/detections.json'), getJson('data/clips.json'), getJson('data/species.json'), getJson('data/meta.json')])
@@ -773,7 +816,7 @@ function load() {
     RAW = [dd, cc, species];
     DATA = derive(dd, cc, species, minConf, opts);
     const u = new Date(meta.updated);
-    document.getElementById('updated').textContent = 'Updated ' + u.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '.';
+    UPDATED = u; paintFresh();
     render();
   })
   .catch(() => {
